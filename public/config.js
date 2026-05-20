@@ -4,22 +4,20 @@
  * ship in client code. What protects the data is Row Level Security: the
  * migration grants anon INSERT only, never read/update/delete.
  *
- * TO FINISH SETUP:
- *   1. Apply migrations/20260521_frontdesk_intake.sql to the Supabase project.
- *   2. Supabase Dashboard > Project Settings > API > Project API keys.
- *      Copy the "anon" / "public" key and paste it into ANON_KEY below.
- *   3. Supabase Dashboard > Project Settings > API > Data API > Exposed
- *      schemas: add "frontdesk" so the JS client can reach the table.
+ * TO FINISH SETUP (one step left):
+ *   - Apply migrations/20260521_frontdesk_intake.sql to the Supabase project
+ *     (SQL editor), then add "frontdesk" under Project Settings > API > Data
+ *     API > Exposed schemas. The anon key below is already the live key.
  *
  * The service-role key is NEVER placed here. It is server-only.
  */
 window.__FRONTDESK_CONFIG = {
   SUPABASE_URL: 'https://umodapwphcxtiijizqll.supabase.co',
 
-  // PLACEHOLDER — replace with the project anon key before going live.
-  // Until this is filled in, the intake form runs in a safe demo mode that
-  // shows the confirmation screen without writing to Supabase.
-  ANON_KEY: 'REPLACE_WITH_SUPABASE_ANON_KEY',
+  // Supabase anon (public) key — safe in client code by design; Row Level
+  // Security on frontdesk.intakes restricts it to INSERT only. The form
+  // stays in safe demo mode until the migration above is applied.
+  ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtb2RhcHdwaGN4dGlpaml6cWxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDY4NTksImV4cCI6MjA5MTQyMjg1OX0.n-78X7umWxX-0N3Ssl8LRKhORaVIPe1SgkXf0MpG5sM',
 
   SCHEMA: 'frontdesk',
   TABLE: 'intakes',
