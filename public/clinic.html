@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Front Desk — Clinic view</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" type="image/png" href="https://nomoi.ai/nomoi-logo-120.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0a08; --bg-2: #161411; --bg-3: #1e1b16;
+      --fg: #f4f1ea; --fg-2: #d8d3c7;
+      --muted: rgba(244,241,234,0.55); --faint: rgba(244,241,234,0.28);
+      --gold: #c4976b; --gold-2: #d8b48b; --teal: #5bbfab;
+      --rule: rgba(196,151,107,0.18); --rule-soft: rgba(244,241,234,0.08);
+      --err: #e08c7d;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg); color: var(--fg);
+      font-family: 'Inter', system-ui, sans-serif; font-weight: 300;
+      line-height: 1.55; -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+    .mono { font-family: 'DM Mono', ui-monospace, monospace; }
+    .serif { font-family: 'Instrument Serif', Georgia, serif; }
+    button, input { font-family: inherit; }
+    a { color: var(--gold-2); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+    header.bar {
+      border-bottom: 1px solid var(--rule-soft);
+      background: rgba(12,10,8,0.8);
+    }
+    .bar-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 58px;
+    }
+    .wordmark {
+      font-weight: 900; font-size: 14px; letter-spacing: 0.04em;
+      border: 1.5px solid var(--fg); border-radius: 3px; padding: 3px 7px;
+    }
+    .bar .tag {
+      font-family: 'DM Mono', monospace; font-size: 11px;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+    }
+
+    /* Gate */
+    .gate {
+      max-width: 420px; margin: 70px auto 0;
+      background: var(--bg-2); border: 1px solid var(--rule);
+      border-radius: 12px; padding: 28px 26px;
+    }
+    .gate h1 {
+      font-family: 'Instrument Serif', Georgia, serif; font-weight: 400;
+      font-size: 26px; margin-bottom: 6px;
+    }
+    .gate p { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+    .gate label {
+      display: block; font-size: 12px; color: var(--fg-2);
+      margin: 14px 0 5px;
+    }
+    .gate input {
+      width: 100%; background: var(--bg-3);
+      border: 1px solid var(--rule); border-radius: 7px;
+      padding: 10px 11px; font-size: 14px; color: var(--fg);
+    }
+    .gate input:focus { outline: none; border-color: var(--gold); }
+    .gate .keyhint {
+      font-size: 11px; color: var(--faint); margin-top: 4px;
+    }
+    .gate button {
+      width: 100%; margin-top: 18px; background: var(--gold);
+      color: var(--bg); border: none; border-radius: 7px;
+      padding: 11px; font-size: 14px; font-weight: 500; cursor: pointer;
+    }
+    .gate button:hover { background: var(--gold-2); }
+    .gate-err {
+      display: none; margin-top: 12px; font-size: 12.5px; color: var(--err);
+    }
+
+    /* Dashboard */
+    .dash { display: none; padding: 28px 0 60px; }
+    .dash.show { display: block; }
+    .dash-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 4px; flex-wrap: wrap; gap: 8px;
+    }
+    .dash-head h1 {
+      font-family: 'Instrument Serif', Georgia, serif; font-weight: 400;
+      font-size: 30px;
+    }
+    .dash-head .count { font-size: 13px; color: var(--muted); }
+    .dash-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+    .toolbar {
+      display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .toolbar button {
+      background: var(--bg-2); border: 1px solid var(--rule);
+      color: var(--fg-2); border-radius: 7px; padding: 7px 13px;
+      font-size: 12.5px; cursor: pointer;
+    }
+    .toolbar button:hover { border-color: var(--gold); color: var(--fg); }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align: left; font-family: 'DM Mono', monospace;
+      font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--faint); padding: 8px 12px; border-bottom: 1px solid var(--rule);
+    }
+    tbody td {
+      padding: 13px 12px; font-size: 13.5px;
+      border-bottom: 1px solid var(--rule-soft); color: var(--fg-2);
+      vertical-align: top;
+    }
+    tbody tr.row { cursor: pointer; }
+    tbody tr.row:hover { background: var(--bg-2); }
+    .pat-name { color: var(--fg); font-weight: 500; }
+    .pat-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .status {
+      font-family: 'DM Mono', monospace; font-size: 10.5px;
+      letter-spacing: 0.05em; padding: 3px 8px; border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .status.submitted { background: rgba(91,191,171,0.14); color: var(--teal); }
+    .status.reviewed { background: rgba(196,151,107,0.16); color: var(--gold-2); }
+    .status.archived { background: var(--rule-soft); color: var(--muted); }
+
+    /* Detail panel */
+    tr.detail td { padding: 0; border-bottom: 1px solid var(--rule-soft); }
+    .detail-body {
+      display: none; padding: 18px 14px 22px; background: var(--bg-2);
+    }
+    tr.detail.open .detail-body { display: block; }
+    .detail-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px 28px;
+    }
+    @media (max-width: 640px) { .detail-grid { grid-template-columns: 1fr; } }
+    .dgroup h3 {
+      font-family: 'DM Mono', monospace; font-size: 10.5px;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 8px;
+    }
+    .dgroup .kv { font-size: 13px; margin-bottom: 5px; }
+    .dgroup .kv .k { color: var(--muted); display: inline-block; min-width: 96px; }
+    .dgroup .kv .v { color: var(--fg); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .chip {
+      font-size: 11.5px; background: var(--bg-3); border: 1px solid var(--rule);
+      color: var(--fg-2); border-radius: 999px; padding: 2px 9px;
+    }
+    .photo-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+    .photo-link {
+      font-size: 12px; color: var(--gold-2); border: 1px solid var(--rule);
+      border-radius: 6px; padding: 6px 10px;
+    }
+    .photo-link.none { color: var(--faint); border-color: var(--rule-soft); }
+
+    .empty, .loading, .load-err {
+      text-align: center; padding: 50px 20px; color: var(--muted);
+      font-size: 14px;
+    }
+    .load-err { color: var(--err); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body data-nomoi-surface="frontdesk.nomoi.ai">
+
+  <header class="bar">
+    <div class="wrap bar-inner">
+      <span class="wordmark" aria-label="NOMOI">NOMΘI</span>
+      <span class="tag">Front Desk · Clinic view</span>
+    </div>
+  </header>
+
+  <!-- Gate -->
+  <div class="gate" id="gate">
+    <h1>Clinic view</h1>
+    <p>Enter the shared passcode to see intakes that patients have submitted.</p>
+
+    <label for="passInput">Passcode</label>
+    <input type="password" id="passInput" autocomplete="off" placeholder="Shared clinic passcode" />
+
+    <label for="keyInput">Read key</label>
+    <input type="password" id="keyInput" autocomplete="off" placeholder="Supabase service-role key" />
+    <div class="keyhint">
+      Patient records are private. This key is held only in this browser tab and is
+      never stored in the page. Ask the NOMOI operator for it.
+    </div>
+
+    <button id="enterBtn">Open clinic view</button>
+    <div class="gate-err" id="gateErr"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="dash" id="dash">
+    <div class="wrap">
+      <div class="dash-head">
+        <h1>Recent intakes</h1>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="dash-sub">Pre-visit intakes patients completed on their phones. Read-only.</div>
+      <div class="toolbar">
+        <button id="refreshBtn">Refresh</button>
+      </div>
+      <div id="tableHost">
+        <div class="loading">Loading intakes...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){if(window.__nomoiSurfaceEmit)return;var s='frontdesk.nomoi.ai',e='https://ingest.atlas.nomoi.ai/api/surface/ingest',k='__nomoi_surface_session';var id;try{id=sessionStorage.getItem(k)||crypto.randomUUID();sessionStorage.setItem(k,id)}catch(_){id=crypto.randomUUID()}function send(t,p){var b=JSON.stringify({surface:s,event:t,payload:p,ts:new Date().toISOString(),session_id:id});var bl=new Blob([b],{type:'application/json'});if(navigator.sendBeacon)navigator.sendBeacon(e,bl);else fetch(e,{method:'POST',body:bl,keepalive:true}).catch(function(){})}window.__nomoiSurfaceEmit=send;send('page_view',{path:location.pathname})})();
+  </script>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="clinic.js"></script>
+  <script src="https://ingest.atlas.nomoi.ai/lib/surface-motion.js" defer></script>
+</body>
+</html>
