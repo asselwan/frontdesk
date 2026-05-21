@@ -61,7 +61,8 @@
 
     try {
       sb = window.supabase.createClient(CFG.SUPABASE_URL, key, {
-        db: { schema: CFG.SCHEMA || 'frontdesk' },
+        // public schema — must match config.js SCHEMA and app.js.
+        db: { schema: CFG.SCHEMA || 'public' },
         auth: { persistSession: false }
       });
       svcKey = key;
@@ -178,7 +179,7 @@
   function loadIntakes() {
     if (!sb) return;
     tableHost.innerHTML = '<div class="loading">Loading intakes...</div>';
-    sb.from(CFG.TABLE || 'intakes')
+    sb.from(CFG.TABLE || 'frontdesk_intakes')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(200)

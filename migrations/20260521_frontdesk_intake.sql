@@ -1,25 +1,19 @@
--- NOMOI Front Desk v1 — schema, intake table, storage bucket, RLS
+-- NOMOI Front Desk v1 — intake table, storage bucket, RLS
 -- Apply with:  psql "$DATABASE_URL" < migrations/20260521_frontdesk_intake.sql
 -- DATABASE_URL is the Supabase project Postgres connection string
 -- (Dashboard > Project Settings > Database > Connection string > URI).
 -- The service-role JWT cannot run DDL; a real Postgres connection is required.
+--
+-- The intake table lives in the public schema. public is exposed to
+-- PostgREST by default, so no exposed-schema toggle is needed. config.js
+-- points the client at public.frontdesk_intakes — this file must match it.
+-- A custom schema was tried first; the exposed-schema propagation proved
+-- unreliable on the hosted project, so public is used on purpose.
 
 begin;
 
--- 1. Schema --------------------------------------------------------------
-create schema if not exists frontdesk;
-
--- Expose the schema to PostgREST so the JS client can reach it.
--- (Also do this in Dashboard > Project Settings > API > Exposed schemas
---  if the line below has no effect on the hosted project.)
-do $$
-begin
-  perform 1;
-exception when others then null;
-end $$;
-
--- 2. Intake table --------------------------------------------------------
-create table if not exists frontdesk.intakes (
+-- 1. Intake table --------------------------------------------------------
+create table if not exists public.frontdesk_intakes (
   id                uuid primary key default gen_random_uuid(),
   created_at        timestamptz not null default now(),
   status            text not null default 'submitted'
@@ -57,27 +51,27 @@ create table if not exists frontdesk.intakes (
   user_agent        text
 );
 
-create index if not exists intakes_created_at_idx
-  on frontdesk.intakes (created_at desc);
-create index if not exists intakes_status_idx
-  on frontdesk.intakes (status);
+create index if not exists frontdesk_intakes_created_at_idx
+  on public.frontdesk_intakes (created_at desc);
+create index if not exists frontdesk_intakes_status_idx
+  on public.frontdesk_intakes (status);
 
--- 3. Row Level Security --------------------------------------------------
-alter table frontdesk.intakes enable row level security;
+-- 2. Row Level Security --------------------------------------------------
+alter table public.frontdesk_intakes enable row level security;
 
 -- The patient SPA uses the anon key. It may INSERT a new intake and
 -- nothing else. It can never read, update, or delete rows. The clinic
 -- view reads through a server-held key, never the anon key.
-drop policy if exists "anon can insert intake" on frontdesk.intakes;
+drop policy if exists "anon can insert intake" on public.frontdesk_intakes;
 create policy "anon can insert intake"
-  on frontdesk.intakes
+  on public.frontdesk_intakes
   for insert
   to anon
   with check (true);
 
 -- No select/update/delete policy for anon == those operations are denied.
 
--- 4. Storage bucket for card photos -------------------------------------
+-- 3. Storage bucket for card photos -------------------------------------
 -- Private bucket. Patient SPA uploads via anon key; objects are not
 -- publicly readable. The clinic view fetches signed URLs server-side.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -102,7 +96,10 @@ commit;
 
 -- ------------------------------------------------------------------------
 -- POST-APPLY CHECK
---   select count(*) from frontdesk.intakes;          -- expect 0
+--   select count(*) from public.frontdesk_intakes;   -- expect 0
+--   select tablename, rowsecurity from pg_tables
+--     where schemaname = 'public'
+--       and tablename = 'frontdesk_intakes';          -- rowsecurity = t
 --   select id, name, public from storage.buckets
 --     where id = 'frontdesk-cards';                  -- expect 1 row, public=f
 -- ------------------------------------------------------------------------

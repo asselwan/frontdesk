@@ -33,7 +33,10 @@
   if (CONFIGURED && window.supabase && window.supabase.createClient) {
     try {
       sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.ANON_KEY, {
-        db: { schema: CFG.SCHEMA || 'frontdesk' },
+        // The intake table lives in the public schema (config.js sets
+        // SCHEMA: 'public'); the fallback must match that, not a custom
+        // schema, or a config missing SCHEMA would point at nothing.
+        db: { schema: CFG.SCHEMA || 'public' },
         auth: { persistSession: false }
       });
     } catch (e) {
