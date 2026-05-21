@@ -23,6 +23,7 @@
   var slugFilter = document.getElementById('slugFilter');
 
   var sb = null;
+  var svcKey = null; // read key entered at unlock; also authorises extraction calls
   var allRows = [];          // every intake loaded, unfiltered
   var activeSlug = '';       // current slug filter, '' means all clinics
 
@@ -63,6 +64,7 @@
         db: { schema: CFG.SCHEMA || 'frontdesk' },
         auth: { persistSession: false }
       });
+      svcKey = key;
     } catch (e) {
       gateErr.textContent = 'Could not start the client. Check the read key.';
       gateErr.style.display = 'block';
@@ -430,10 +432,10 @@
     var src = cardSourceFor(row);
     if (!src) { rcStatus(id, 'err', 'This intake has no card photo.'); return; }
 
-    var token = CFG.EXTRACT_API_TOKEN;
+    var token = svcKey;
     var apiBase = CFG.EXTRACT_API_BASE || 'https://docextract.nomoi.ai';
     if (!token) {
-      rcStatus(id, 'err', 'The extraction service is not configured. Ask the NOMOI operator.');
+      rcStatus(id, 'err', 'Unlock the clinic view before reading a card.');
       return;
     }
 

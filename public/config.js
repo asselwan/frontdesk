@@ -29,8 +29,7 @@ window.__FRONTDESK_CONFIG = {
 
   // NOMOI document-extraction backend. The clinic view asks this service
   // to read an uploaded card photo and fill the matching intake columns.
-  // The token below is acceptable in client config because /clinic is
-  // passcode-gated and clinic-operator only.
-  EXTRACT_API_BASE: 'https://docextract.nomoi.ai',
-  EXTRACT_API_TOKEN: 'b74e657206ee7c984d96b6de93362dce8a7024016542f253'
+  // No secret is stored here: the call is authorised with the read key the
+  // clinic operator already entered at runtime.
+  EXTRACT_API_BASE: 'https://docextract.nomoi.ai'
 };
