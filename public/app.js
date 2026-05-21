@@ -10,6 +10,20 @@
   var CFG = window.__FRONTDESK_CONFIG || {};
   var emit = window.__nomoiSurfaceEmit || function () {};
 
+  /* ---- Per-clinic link slug (v2) ------------------------------------
+   * Reads ?clinic=<slug> from the intake URL. Slugs are normalised to
+   * lowercase and stripped of anything that is not a letter, digit, or
+   * hyphen, so a malformed link cannot inject odd values into the row.
+   * ?link= is accepted as a fallback for v1-era links. Returns null when
+   * no usable slug is present.
+   */
+  function clinicSlug() {
+    var qs = new URLSearchParams(location.search);
+    var raw = qs.get('clinic') || qs.get('link') || '';
+    var slug = raw.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64);
+    return slug || null;
+  }
+
   var CONFIGURED =
     !!CFG.SUPABASE_URL &&
     !!CFG.ANON_KEY &&
@@ -248,7 +262,12 @@
       },
       consent_treat: form.querySelector('[name="consent_treat"]').checked,
       consent_privacy: form.querySelector('[name="consent_privacy"]').checked,
-      source_link_id: new URLSearchParams(location.search).get('link') || null,
+      // Per-clinic intake links (v2). A clinic operator shares
+      // frontdesk.nomoi.ai/?clinic=<slug>; the slug is captured here and
+      // written into source_link_id so the clinic view can filter by it.
+      // ?link= is kept as a fallback for any v1 links already in use.
+      // No param present means a generic intake and the column stays null.
+      source_link_id: clinicSlug(),
       user_agent: navigator.userAgent
     };
   }

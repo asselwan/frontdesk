@@ -20,14 +20,22 @@
   var gateErr = document.getElementById('gateErr');
   var tableHost = document.getElementById('tableHost');
   var countEl = document.getElementById('count');
+  var slugFilter = document.getElementById('slugFilter');
 
   var sb = null;
+  var allRows = [];          // every intake loaded, unfiltered
+  var activeSlug = '';       // current slug filter, '' means all clinics
 
   document.getElementById('enterBtn').addEventListener('click', enter);
   document.getElementById('keyInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') enter();
   });
   document.getElementById('refreshBtn').addEventListener('click', loadIntakes);
+  slugFilter.addEventListener('change', function () {
+    activeSlug = slugFilter.value;
+    renderFiltered();
+    emit('clinic_slug_filter', { slug: activeSlug || 'all' });
+  });
 
   function enter() {
     var pass = document.getElementById('passInput').value.trim();
@@ -67,6 +75,91 @@
     loadIntakes();
   }
 
+  /* ---- Per-clinic link generator (v2) -------------------------------
+   * The operator enters a clinic slug (and an optional display name) and
+   * gets a shareable intake URL with a copy-to-clipboard control. The
+   * slug must match the same rule app.js applies on the intake side
+   * (lowercase letters, digits, hyphens) so a generated link always
+   * round-trips to a clean source_link_id.
+   */
+  var lgSlug = document.getElementById('lgSlug');
+  var lgName = document.getElementById('lgName');
+  var lgErr = document.getElementById('lgErr');
+  var lgOut = document.getElementById('lgOut');
+  var lgUrl = document.getElementById('lgUrl');
+  var lgNote = document.getElementById('lgNote');
+  var lgCopyBtn = document.getElementById('lgCopyBtn');
+
+  function normaliseSlug(raw) {
+    return String(raw || '').trim().toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 64);
+  }
+
+  function buildIntakeUrl() {
+    var slug = normaliseSlug(lgSlug.value);
+    lgErr.style.display = 'none';
+    if (!slug) {
+      lgErr.textContent = 'Enter a clinic slug. Use letters, numbers, and hyphens.';
+      lgErr.style.display = 'block';
+      lgOut.classList.remove('show');
+      return;
+    }
+    // Show the operator the cleaned slug if it differs from what they typed.
+    if (slug !== lgSlug.value.trim()) lgSlug.value = slug;
+    var origin = location.origin || 'https://frontdesk.nomoi.ai';
+    var url = origin + '/?clinic=' + encodeURIComponent(slug);
+    lgUrl.textContent = url;
+    var name = lgName.value.trim();
+    lgNote.textContent = name
+      ? 'Share this link with ' + name + '. Intakes opened through it are tagged "' + slug + '".'
+      : 'Share this link. Intakes opened through it are tagged "' + slug + '".';
+    lgOut.classList.add('show');
+    lgCopyBtn.textContent = 'Copy';
+    emit('clinic_link_generated', { slug: slug });
+  }
+
+  document.getElementById('lgMakeBtn').addEventListener('click', buildIntakeUrl);
+  lgSlug.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') buildIntakeUrl();
+  });
+  lgName.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') buildIntakeUrl();
+  });
+
+  lgCopyBtn.addEventListener('click', function () {
+    var url = lgUrl.textContent;
+    if (!url) return;
+    function ok() {
+      lgCopyBtn.textContent = 'Copied';
+      setTimeout(function () { lgCopyBtn.textContent = 'Copy'; }, 1800);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(ok, fallbackCopy);
+    } else {
+      fallbackCopy();
+    }
+    function fallbackCopy() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok();
+      } catch (e) {
+        lgCopyBtn.textContent = 'Copy failed';
+        setTimeout(function () { lgCopyBtn.textContent = 'Copy'; }, 1800);
+      }
+    }
+  });
+
   function fmtDate(iso) {
     if (!iso) return '';
     var d = new Date(iso);
@@ -95,7 +188,9 @@
             '</div>';
           return;
         }
-        render(res.data || []);
+        allRows = res.data || [];
+        rebuildSlugFilter();
+        renderFiltered();
       })
       .catch(function (err) {
         tableHost.innerHTML =
@@ -103,25 +198,60 @@
       });
   }
 
+  // Rebuild the slug dropdown from whatever slugs appear in the loaded rows.
+  function rebuildSlugFilter() {
+    var seen = {};
+    allRows.forEach(function (r) {
+      var s = r.source_link_id;
+      if (s) seen[s] = (seen[s] || 0) + 1;
+    });
+    var slugs = Object.keys(seen).sort();
+    var opts = '<option value="">All clinics</option>';
+    slugs.forEach(function (s) {
+      opts += '<option value="' + esc(s) + '">' + esc(s) + ' (' + seen[s] + ')</option>';
+    });
+    // Keep the current selection if it still exists in the data.
+    if (activeSlug && slugs.indexOf(activeSlug) === -1) activeSlug = '';
+    slugFilter.innerHTML = opts;
+    slugFilter.value = activeSlug;
+  }
+
+  // Apply the active slug filter and render the resulting rows.
+  function renderFiltered() {
+    var rows = activeSlug
+      ? allRows.filter(function (r) { return r.source_link_id === activeSlug; })
+      : allRows;
+    render(rows);
+  }
+
   function render(rows) {
-    countEl.textContent = rows.length + (rows.length === 1 ? ' intake' : ' intakes');
+    var label = activeSlug ? ' for ' + activeSlug : '';
+    countEl.textContent = rows.length + (rows.length === 1 ? ' intake' : ' intakes') + label;
     if (!rows.length) {
       tableHost.innerHTML =
-        '<div class="empty">No intakes yet. They will appear here as patients submit them.</div>';
+        '<div class="empty">' +
+        (activeSlug
+          ? 'No intakes for "' + esc(activeSlug) + '" yet.'
+          : 'No intakes yet. They will appear here as patients submit them.') +
+        '</div>';
       return;
     }
 
     var html = '<table><thead><tr>' +
-      '<th>Patient</th><th>Submitted</th><th>Reason</th><th>Status</th>' +
+      '<th>Patient</th><th>Clinic</th><th>Submitted</th><th>Reason</th><th>Status</th>' +
       '</tr></thead><tbody>';
 
     rows.forEach(function (r, i) {
       var hist = r.history || {};
       var conds = (hist.conditions || []);
+      var slug = r.source_link_id;
       html += '<tr class="row" data-i="' + i + '">' +
         '<td><div class="pat-name">' + esc(r.full_name) + '</div>' +
         '<div class="pat-meta">' + esc(r.phone || '') +
         (r.date_of_birth ? ' · DOB ' + esc(r.date_of_birth) : '') + '</div></td>' +
+        '<td>' + (slug
+          ? '<span class="slug-tag">' + esc(slug) + '</span>'
+          : '<span class="slug-tag none">—</span>') + '</td>' +
         '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
         '<td>' + esc((r.reason_for_visit || '').slice(0, 60)) +
         ((r.reason_for_visit || '').length > 60 ? '...' : '') + '</td>' +
@@ -129,7 +259,7 @@
         esc(r.status || 'submitted') + '</span></td>' +
         '</tr>';
 
-      html += '<tr class="detail" data-detail="' + i + '"><td colspan="4"><div class="detail-body">' +
+      html += '<tr class="detail" data-detail="' + i + '"><td colspan="5"><div class="detail-body">' +
         '<div class="detail-grid">' +
         '<div class="dgroup"><h3>Contact</h3>' +
         kv('Name', r.full_name) + kv('Date of birth', r.date_of_birth) +
@@ -157,7 +287,7 @@
         kv('Privacy', r.consent_privacy ? 'Acknowledged' : 'Not acknowledged') +
         '</div>' +
         '<div class="dgroup"><h3>Reference</h3>' +
-        kv('Intake ID', r.id) + kv('Link ID', r.source_link_id) +
+        kv('Intake ID', r.id) + kv('Clinic slug', r.source_link_id) +
         '</div>' +
         '</div></div></td></tr>';
     });

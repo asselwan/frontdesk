@@ -97,9 +97,9 @@ patient page also loads the Clinic Baseline customer-comms widget. The
 intake emits step views, blocked steps, photo attachments, and submit
 outcomes so the funnel is measurable.
 
-## v1 vs future
+## v1 vs v2 vs future
 
-v1 ships, working end to end once the migration is applied:
+v1 shipped, working end to end once the migration is applied:
 
 - Four-step patient intake with inline validation and a progress indicator
 - Photo capture for insurance card and government ID via `capture` file
@@ -110,16 +110,33 @@ v1 ships, working end to end once the migration is applied:
   photo viewing
 - RLS that limits the public client to inserts only
 
-Not in v1, deliberately:
+v2 adds per-clinic intake links, with no schema change:
 
-- A per-clinic link issuer and clinic accounts (v1 uses one shared deployment
-  and an optional `?link=` tag on the URL)
-- A backend route for the clinic view (v1 uses an operator-entered read key)
+- The intake page reads `?clinic=<slug>` and writes the slug into the
+  existing `source_link_id` column. The slug is normalised to lowercase
+  letters, digits, and hyphens. `?link=` is still accepted as a fallback
+  for any v1-era links. No param means a generic intake and the column
+  stays null.
+- The `/clinic` view has a link generator: an operator types a clinic slug
+  (and an optional display name) and gets the shareable
+  `https://frontdesk.nomoi.ai/?clinic=<slug>` URL with a copy control.
+- The clinic view shows the slug on every intake row and offers a dropdown
+  filter so the operator can view one clinic at a time.
+
+Not in v2, deliberately:
+
+- A backend route for the clinic view (still an operator-entered read key)
 - Editing intake status from the clinic view (the `status` column and CHECK
   constraint exist; the UI is read-only)
 - Sending the patient a link by email or SMS (handled by the clinic for now)
-- OCR of the card photos into structured insurance fields
+- Clinic accounts and a managed slug registry (v2 slugs are free-form; the
+  link generator just constructs the URL)
 - Noshight and chart-indexing wiring inside Clinic Baseline
+
+v3 candidate, explicitly out of scope for v2:
+
+- OCR of the card photos into structured insurance fields. This needs a
+  server-side LLM and a backend, neither of which Front Desk has today.
 
 ---
 
