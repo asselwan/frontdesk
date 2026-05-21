@@ -293,17 +293,29 @@
       return;
     }
 
+    // The intake id is generated client-side and supplied in the insert.
+    // The anon key is INSERT-only by design (RLS) — it cannot read a row
+    // back, so the submit must not chain a .select(); doing so fails with
+    // "permission denied". We already know the id because we minted it.
+    var intakeId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          var r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+    payload.id = intakeId;
+
     Promise.all([
       uploadPhoto(files.insurance_card, 'insurance'),
       uploadPhoto(files.gov_id, 'govid')
     ]).then(function (paths) {
       payload.insurance_card_path = paths[0];
       payload.gov_id_path = paths[1];
-      return sb.from(CFG.TABLE).insert(payload).select('id').single();
+      return sb.from(CFG.TABLE).insert(payload);
     }).then(function (res) {
       if (res.error) throw res.error;
-      emit('intake_submit_success', { intake_id: res.data && res.data.id });
-      finish(res.data && res.data.id ? shortRef(res.data.id) : 'SUBMITTED');
+      emit('intake_submit_success', { intake_id: intakeId });
+      finish(shortRef(intakeId));
     }).catch(function (err) {
       emit('intake_submit_error', { message: String(err && err.message || err) });
       submitBtn.disabled = false;
