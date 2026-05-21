@@ -25,5 +25,12 @@ window.__FRONTDESK_CONFIG = {
 
   // Shared passcode that gates the read-only /clinic view for v1.
   // Change this before sharing the clinic link.
-  CLINIC_PASSCODE: 'frontdesk2026'
+  CLINIC_PASSCODE: 'frontdesk2026',
+
+  // NOMOI document-extraction backend. The clinic view asks this service
+  // to read an uploaded card photo and fill the matching intake columns.
+  // The token below is acceptable in client config because /clinic is
+  // passcode-gated and clinic-operator only.
+  EXTRACT_API_BASE: 'https://docextract.nomoi.ai',
+  EXTRACT_API_TOKEN: 'b74e657206ee7c984d96b6de93362dce8a7024016542f253'
 };

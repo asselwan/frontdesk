@@ -245,7 +245,7 @@
       var hist = r.history || {};
       var conds = (hist.conditions || []);
       var slug = r.source_link_id;
-      html += '<tr class="row" data-i="' + i + '">' +
+      html += '<tr class="row" data-i="' + i + '" data-intake-id="' + esc(r.id) + '">' +
         '<td><div class="pat-name">' + esc(r.full_name) + '</div>' +
         '<div class="pat-meta">' + esc(r.phone || '') +
         (r.date_of_birth ? ' · DOB ' + esc(r.date_of_birth) : '') + '</div></td>' +
@@ -272,7 +272,9 @@
         '<div class="photo-row">' +
         photoLink('Insurance card', r.insurance_card_path) +
         photoLink('Government ID', r.gov_id_path) +
-        '</div></div>' +
+        '</div>' +
+        readCardControl(r) +
+        '</div>' +
         '<div class="dgroup"><h3>Reason for visit</h3>' +
         '<div class="kv"><span class="v">' + esc(r.reason_for_visit || '—') + '</span></div></div>' +
         '<div class="dgroup"><h3>Medical history</h3>' +
@@ -318,9 +320,211 @@
     return '<a class="photo-link" href="#" data-photo="' + esc(path) + '">View ' + esc(label) + '</a>';
   }
 
-  // Card photos live in a private bucket. Generate a short-lived signed URL.
+  /* ---- Read card -----------------------------------------------------
+   * For an intake row that has a card photo, the operator can ask the
+   * NOMOI document-extraction backend to read the photo and fill any
+   * insurance/identity columns that are still empty. The backend never
+   * overwrites a value the patient already typed.
+   */
+  // The label shown on the read-card button + the card path it reads.
+  // Prefer the insurance card; fall back to the government ID.
+  function cardSourceFor(r) {
+    if (r.insurance_card_path) {
+      return { path: r.insurance_card_path, label: 'insurance card' };
+    }
+    if (r.gov_id_path) {
+      return { path: r.gov_id_path, label: 'government ID' };
+    }
+    return null;
+  }
+
+  function readCardControl(r) {
+    var src = cardSourceFor(r);
+    if (!src) return ''; // no card photo on this row, no action
+    return '<div class="read-card-row">' +
+      '<button class="read-card-btn" data-read-card="' + esc(r.id) + '">' +
+      'Read ' + esc(src.label) + '</button>' +
+      '<div class="read-card-status" data-rc-status="' + esc(r.id) + '"></div>' +
+      '<div class="read-card-fields" data-rc-fields="' + esc(r.id) + '"></div>' +
+      '</div>';
+  }
+
+  // Friendly labels for the fields docextract returns.
+  var CARD_FIELD_LABELS = {
+    full_name: 'Full name',
+    date_of_birth: 'Date of birth',
+    insurance_provider: 'Insurance provider',
+    member_id: 'Member ID',
+    group_number: 'Group number',
+    document_number: 'Document number',
+    expiry: 'Expiry'
+  };
+  // Which extracted fields map to a real intake column (the rest are
+  // shown for reference but cannot be written by the backend).
+  var CARD_FIELD_HAS_COLUMN = {
+    full_name: true, date_of_birth: true, insurance_provider: true,
+    member_id: true, group_number: true,
+    document_number: false, expiry: false
+  };
+
+  function rcStatus(id, kind, msg) {
+    var el = tableHost.querySelector('[data-rc-status="' + cssAttr(id) + '"]');
+    if (!el) return;
+    el.className = 'read-card-status show ' + kind;
+    el.textContent = msg;
+  }
+  // Escape a value for use inside a CSS attribute selector.
+  function cssAttr(v) {
+    return String(v).replace(/["\\]/g, '\\$&');
+  }
+
+  function renderCardFields(id, extracted, updatedColumns) {
+    var el = tableHost.querySelector('[data-rc-fields="' + cssAttr(id) + '"]');
+    if (!el) return;
+    var html = '';
+    Object.keys(CARD_FIELD_LABELS).forEach(function (field) {
+      var v = extracted ? extracted[field] : null;
+      if (!v) return;
+      html += '<div class="rcf-line"><span class="rcf-k">' +
+        esc(CARD_FIELD_LABELS[field]) + '</span>' +
+        '<span class="rcf-v">' + esc(v) +
+        (CARD_FIELD_HAS_COLUMN[field] ? '' : ' (no intake field)') +
+        '</span></div>';
+    });
+    if (!html) {
+      html = '<div class="rcf-line">No fields could be read from that photo.</div>';
+    }
+    var written = updatedColumns || [];
+    if (written.length) {
+      html += '<div class="rcf-filled">Filled ' + written.length +
+        ' empty column' + (written.length === 1 ? '' : 's') + ': ' +
+        esc(written.join(', ')) + '</div>';
+    } else {
+      html += '<div class="rcf-filled">No columns filled. The matching ' +
+        'fields were already entered, or nothing new was read.</div>';
+    }
+    el.innerHTML = html;
+    el.className = 'read-card-fields show';
+  }
+
+  // Re-fetch one intake row and re-render the table, keeping its detail open.
+  function reloadRow(id) {
+    return sb.from(CFG.TABLE || 'frontdesk_intakes')
+      .select('*').eq('id', id).maybeSingle()
+      .then(function (res) {
+        if (res.error || !res.data) return;
+        for (var i = 0; i < allRows.length; i++) {
+          if (allRows[i].id === id) { allRows[i] = res.data; break; }
+        }
+      })
+      .catch(function () {});
+  }
+
+  function readCard(id) {
+    var row = null;
+    for (var i = 0; i < allRows.length; i++) {
+      if (allRows[i].id === id) { row = allRows[i]; break; }
+    }
+    if (!row) { rcStatus(id, 'err', 'That intake row is no longer loaded. Refresh and try again.'); return; }
+
+    var src = cardSourceFor(row);
+    if (!src) { rcStatus(id, 'err', 'This intake has no card photo.'); return; }
+
+    var token = CFG.EXTRACT_API_TOKEN;
+    var apiBase = CFG.EXTRACT_API_BASE || 'https://docextract.nomoi.ai';
+    if (!token) {
+      rcStatus(id, 'err', 'The extraction service is not configured. Ask the NOMOI operator.');
+      return;
+    }
+
+    var btn = tableHost.querySelector('[data-read-card="' + cssAttr(id) + '"]');
+    if (btn) btn.disabled = true;
+    rcStatus(id, 'working', 'Reading the ' + src.label + '. This can take a moment...');
+
+    fetch(apiBase.replace(/\/+$/, '') + '/extract/card', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({
+        intake_id: id,
+        storage_bucket: CFG.BUCKET || 'frontdesk-cards',
+        storage_path: src.path
+      })
+    })
+      .then(function (resp) {
+        // Read the body once, then branch on status so a 422 with a JSON
+        // error and a 200 with a result are both handled.
+        return resp.text().then(function (text) {
+          var body = null;
+          try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+          if (!resp.ok) {
+            var detail = (body && (body.detail || body.error || body.message)) ||
+              text || ('HTTP ' + resp.status);
+            throw new Error('Could not read the card. ' + detail);
+          }
+          return body || {};
+        });
+      })
+      .then(function (result) {
+        emit('clinic_card_read', {
+          intake_id: id,
+          filled: (result.updated_columns || []).length
+        });
+        var written = result.updated_columns || [];
+        rcStatus(id, 'done', written.length
+          ? 'Done. ' + written.length + ' field' + (written.length === 1 ? '' : 's') + ' filled.'
+          : 'Done. No empty fields needed filling.');
+        // Refresh this row from the table, then re-render keeping it open.
+        return reloadRow(id).then(function () {
+          renderFiltered();
+          // The table was rebuilt; re-open this row's detail and re-show
+          // the extracted fields and refreshed status.
+          reopenDetailFor(id);
+          renderCardFields(id, result.extracted, written);
+          rcStatus(id, 'done', written.length
+            ? 'Done. ' + written.length + ' field' + (written.length === 1 ? '' : 's') + ' filled.'
+            : 'Done. No empty fields needed filling.');
+        });
+      })
+      .catch(function (err) {
+        var msg = (err && err.message) ? err.message : String(err);
+        rcStatus(id, 'err', msg);
+        var b = tableHost.querySelector('[data-read-card="' + cssAttr(id) + '"]');
+        if (b) b.disabled = false;
+      });
+  }
+
+  // After a re-render, re-open the detail row for the given intake id.
+  function reopenDetailFor(id) {
+    var rows = tableHost.querySelectorAll('tr.row');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      if (tr.getAttribute('data-intake-id') === id) {
+        var idx = tr.getAttribute('data-i');
+        var detail = tableHost.querySelector('tr.detail[data-detail="' + idx + '"]');
+        if (detail) detail.classList.add('open');
+        break;
+      }
+    }
+  }
+
+  // Delegated clicks inside the table: view a card photo, or read a card.
   tableHost && tableHost.addEventListener('click', function (ev) {
-    var a = ev.target.closest && ev.target.closest('a[data-photo]');
+    if (!ev.target.closest) return;
+
+    // Read card: ask the extraction backend to fill the intake columns.
+    var readBtn = ev.target.closest('button[data-read-card]');
+    if (readBtn && sb) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      readCard(readBtn.getAttribute('data-read-card'));
+      return;
+    }
+
+    // View a card photo via a short-lived signed URL on the private bucket.
+    var a = ev.target.closest('a[data-photo]');
     if (!a || !sb) return;
     ev.preventDefault();
     var path = a.getAttribute('data-photo');
